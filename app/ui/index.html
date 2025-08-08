@@ -2,63 +2,57 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <title>AWS Enum</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AWS Enum — Modern</title>
-  <link rel="icon" href="data:,">
-
-  <!-- Cytoscape core first -->
-  <script src="https://unpkg.com/cytoscape@3.27.0/dist/cytoscape.min.js"></script>
-
-  <!-- Plugins (order matters; some CDNs didn’t have the versions you tried) -->
-  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
-  <!-- Minimap is optional; if 404s in your network, app will still work -->
-  <script src="https://unpkg.com/cytoscape-minimap@3.1.0/cytoscape-minimap.js"></script>
-  <!-- SVG export -->
-  <script src="https://unpkg.com/cytoscape-svg@1.0.2/cytoscape-svg.min.js"></script>
-
-  <!-- Shoelace UI -->
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js"></script>
+  <link rel="stylesheet" href="/ui/styles.css" />
+  <!-- Shoelace (UI kit) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
-
-  <link rel="stylesheet" href="/ui/style.css" />
-  <!-- Load our app as a module to avoid global collisions -->
-  <script type="module" src="/ui/app.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js"></script>
+  <!-- Cytoscape core + optional plugins -->
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-minimap@3.5.0/cytoscape-minimap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@2.0.0/cytoscape-svg.min.js"></script>
 </head>
 <body>
-  <div class="shell">
-    <header>
-      <div class="brand">AWS Enum <span class="badge">Modern</span></div>
-    </header>
+  <div class="app">
+    <!-- Left, fixed sidebar -->
+    <aside class="sidebar">
+      <div class="pad">
+        <h2 class="title">AWS Enum</h2>
 
-    <div class="controls">
-      <sl-card class="auth-card">
-        <div slot="header">Connect to AWS</div>
-        <div class="row">
-          <sl-input id="ak" label="Access Key ID" placeholder="AKIA..." clearable></sl-input>
-          <sl-input id="sk" label="Secret Access Key" type="password" placeholder="••••••••••" toggle-password clearable></sl-input>
+        <sl-input id="ak" label="Access Key ID" placeholder="AKIA..." clearable></sl-input>
+        <sl-input id="sk" label="Secret Access Key" type="password" placeholder="••••••" clearable></sl-input>
+
+        <div class="btn-row">
+          <sl-button id="btn-enumerate" variant="primary">Enumerate</sl-button>
+          <sl-button id="btn-reset" variant="default" outline>Reset view</sl-button>
         </div>
-        <sl-button id="btn-enumerate" variant="primary" size="large">Enumerate</sl-button>
-        <div class="hint">Region defaults to <code>ap-southeast-1</code> (server-side)</div>
-      </sl-card>
-    </div>
 
-    <div class="main">
-      <aside id="panel">
-        <sl-details summary="Details" open>
-          <div id="details"><div class="muted">Select a node or edge.</div></div>
-        </sl-details>
-        <sl-details summary="Findings">
-          <div id="findings"></div>
-        </sl-details>
-        <sl-details summary="Warnings" open>
-          <div id="warnings"></div>
-        </sl-details>
         <sl-details summary="Legend" open>
           <div id="legend"></div>
         </sl-details>
-      </aside>
+
+        <sl-details summary="Warnings">
+          <div id="warnings"></div>
+        </sl-details>
+
+        <sl-details summary="Findings">
+          <div id="findings"></div>
+        </sl-details>
+
+        <sl-details summary="Details" open>
+          <div id="details" class="details muted">Select a node or edge.</div>
+        </sl-details>
+      </div>
+    </aside>
+
+    <!-- Right, full-height canvas -->
+    <main class="main">
       <div id="cy"></div>
-    </div>
+    </main>
   </div>
+
+  <script src="/ui/app.js"></script>
 </body>
 </html>
