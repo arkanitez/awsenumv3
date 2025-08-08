@@ -4,11 +4,15 @@
   <meta charset="utf-8" />
   <title>AWS Enum</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Our styles -->
   <link rel="stylesheet" href="/ui/style.css" />
+
   <!-- Shoelace (UI kit) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
   <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js"></script>
-  <!-- Cytoscape core + optional plugins -->
+
+  <!-- Cytoscape core + plugins -->
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape-minimap@3.5.0/cytoscape-minimap.min.js"></script>
@@ -16,7 +20,7 @@
 </head>
 <body>
   <div class="app">
-    <!-- Left, fixed sidebar -->
+    <!-- Fixed left sidebar -->
     <aside class="sidebar">
       <div class="pad">
         <h2 class="title">AWS Enum</h2>
@@ -47,9 +51,10 @@
       </div>
     </aside>
 
-    <!-- Right, full-height canvas -->
+    <!-- Full-height canvas -->
     <main class="main">
-      <div id="cy"></div>
+      <!-- Inline height as extra safety in case CSS fails -->
+      <div id="cy" style="height:100vh;width:100%"></div>
     </main>
   </div>
 
