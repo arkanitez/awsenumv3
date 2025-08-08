@@ -26,9 +26,14 @@ async def index():
     with open(os.path.join(os.path.dirname(__file__), 'ui', 'index.html'), 'r', encoding='utf-8') as f:
         return HTMLResponse(f.read())
 
-def build_session(ak: str|None, sk: str|None, st: str|None, region: str) -> boto3.Session:
+def build_session(ak: str | None, sk: str | None, st: str | None, region: str) -> boto3.Session:
     if ak and sk:
-        return boto3.Session(aws_access_key_id=ak, aws_secret_access_key=sk, aws_session_token=st, region_name=region)
+        return boto3.Session(
+            aws_access_key_id=ak,
+            aws_secret_access_key=sk,
+            aws_session_token=st,
+            region_name=region
+        )
     return boto3.Session(region_name=region)
 
 def _enumerate_one_region(sess: boto3.Session, account_id: str, region: str) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
@@ -55,34 +60,48 @@ def _enumerate_one_region(sess: boto3.Session, account_id: str, region: str) -> 
         ('ecs', ecs.enumerate),
     ]
 
+    # Very simple per-service delta counter (best-effort)
     service_counts: Dict[str, int] = {}
 
     for name, fn in services:
-        before = len(g.elements())
+        before = 0
         try:
+            # If Graph.elements() is cheap, we can count; otherwise ignore errors
+            try:
+                before = len(list(g.elements()))
+            except Exception:
+                before = 0
             fn(sess, account_id, region, g, warnings)
         except Exception as e:
             warnings.append(f'{name} failed: {e}')
-        after = len(g.elements())
-        service_counts[name] = after - before
+        finally:
+            try:
+                after = len(list(g.elements()))
+                service_counts[name] = max(0, after - before)
+            except Exception:
+                # If counting fails (e.g., elements() is a generator), don’t block enumeration
+                pass
 
-    # Derived reachability (optional edges)
+    # Derived reachability edges
     try:
         for e in derive_reachability(g):
             g.add_edge(**e)
     except Exception as e:
         warnings.append(f'derive_reachability failed: {e}')
 
-    elements = g.elements()
-    findings = analyze_findings(elements)
-    # Add a tiny banner node if literally nothing found, to make the UI say *something*
-    if not elements:
-        pass
+    # ---- IMPORTANT FIX: materialize once; safe to iterate multiple times
+    elements: List[Dict[str, Any]] = list(g.elements())
 
-    # Attach counts as a synthetic warning for visibility
-    total_nodes = sum(1 for el in elements if 'source' not in el.get('data', {}))
-    total_edges = sum(1 for el in elements if 'source' in el.get('data', {}))
-    warnings.insert(0, f'Enumerated region {region}: nodes={total_nodes}, edges={total_edges}, per_service={service_counts}')
+    # Findings can now safely iterate
+    findings = analyze_findings(elements)
+
+    # Basic counts for visibility (does not consume elements)
+    try:
+        total_nodes = sum(1 for el in elements if 'source' not in (el.get('data') or {}))
+        total_edges = sum(1 for el in elements if 'source' in (el.get('data') or {}))
+        warnings.insert(0, f'Enumerated region {region}: nodes={total_nodes}, edges={total_edges}, per_service={service_counts}')
+    except Exception:
+        warnings.insert(0, f'Enumerated region {region}: elements={len(elements)}')
 
     return elements, warnings, findings
 
@@ -133,7 +152,16 @@ async def enumerate_api(req: Request):
             el2, w2, f2 = _enumerate_one_region(rsess, account_id, r)
             elements.extend(el2)
             warnings.extend(w2)
-            findings.extend(x for x in f2 if x not in findings)  # de-dupe-ish
+            # findings is a list of dicts; naive de-dupe by string repr is fine
+            for f in f2:
+                if f not in findings:
+                    findings.append(f)
             scanned_regions.append(r)
 
-    return json_response({ 'elements': elements, 'warnings': warnings, 'findings': findings, 'region': region, 'scanned_regions': scanned_regions })
+    return json_response({
+        'elements': elements,
+        'warnings': warnings,
+        'findings': findings,
+        'region': region,
+        'scanned_regions': scanned_regions
+    })
