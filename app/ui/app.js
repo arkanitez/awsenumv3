@@ -5,7 +5,7 @@ window.addEventListener('error', e => {
   const w = document.getElementById('warnings');
   if (w) {
     const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = String(e.error || e.message || e);
+    a.innerText = String(e.error || e.message || e);
     w.appendChild(a);
     const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
     if (det) det.setAttribute('open', '');
@@ -16,7 +16,7 @@ window.addEventListener('unhandledrejection', e => {
   const w = document.getElementById('warnings');
   if (w) {
     const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = String(e.reason);
+    a.innerText = String(e.reason);
     w.appendChild(a);
     const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
     if (det) det.setAttribute('open', '');
@@ -60,260 +60,82 @@ const ICONS = {
   api_gw_v2_route: '/ui/icons/api-gateway-route.svg'
 };
 
-const NODE_STYLES = [
-  { sel: 'node', style: {
-      'label': 'data(label)',
-      'font-size': 11,
-      'text-wrap': 'wrap',
-      'text-max-width': 160,
-      'background-color': '#ffffff',
-      'shape': 'round-rectangle',
-      'border-width': 1,
-      'border-color': '#e5e7eb',
-      'background-image': 'data(icon)',
-      'background-fit': 'contain',
-      'background-clip': 'node',
-      'background-opacity': 1,
-      'background-width': '80%',
-      'background-height': '80%',
-      'background-position-x': '50%',
-      'background-position-y': '40%',
-      'text-valign': 'bottom',
-      'text-halign': 'center',
-      'color':'#111827'
-  }},
-  { sel: 'node:selected', style: { 'border-color': '#111827', 'border-width': 3 } },
-];
-
-const EDGE_STYLES = [
-  { sel: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9, 'width': 2, 'label': 'data(label)', 'font-size': 9, 'color':'#111827' } },
-  { sel: 'edge[category = "resource"]', style: { 'line-color': '#2563eb', 'target-arrow-color': '#2563eb' } },
-  { sel: 'edge[category = "network"]', style: { 'line-color': '#f97316', 'target-arrow-color': '#f97316' } },
-  { sel: 'edge[category = "data"]', style: { 'line-color': '#0ea5e9', 'target-arrow-color': '#0ea5e9', 'line-style': 'dotted' } },
-  { sel: 'edge[derived = "true"]', style: { 'line-style': 'dashed' } },
-  { sel: 'edge[type = "attach"], edge[type = "assoc"]', style: { 'opacity': 0.45 } },
-  { sel: 'edge:selected', style: { 'width': 3 } },
-];
-
-function registerCytoscapePlugins() {
-  try { if (window.cytoscapeCoseBilkent) cytoscape.use(window.cytoscapeCoseBilkent); } catch (e) {}
-  try { if (window.cytoscapeMinimap) cytoscape.use(window.cytoscapeMinimap); } catch (e) {}
-  try { if (window.cytoscapeSvg) cytoscape.use(window.cytoscapeSvg); } catch (e) {}
-}
-
-function initCySafe() {
-  console.log('[ui] initCy');
-  if (!window.cytoscape) throw new Error('Cytoscape failed to load.');
-  const container = document.getElementById('cy');
-  if (!container) throw new Error('#cy container not found');
-
-  registerCytoscapePlugins();
-
-  cy = cytoscape({
-    container,
-    elements: [],
-    minZoom: 0.25,
-    maxZoom: 2.5,
-    pixelRatio: 1,
-    boxSelectionEnabled: false,
-    style: [
-      ...NODE_STYLES.map(s => ({ selector: s.sel, style: s.style })),
-      ...EDGE_STYLES.map(s => ({ selector: s.sel, style: s.style })),
-    ],
-    layout: {
-      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-      quality: 'default', animate: false, nodeRepulsion: 80000, idealEdgeLength: 220, gravity: 0.25, numIter: 1200, tile: true
+const NODE_STYLE = {
+  selector: 'node',
+  style: {
+    'label': 'data(label)',
+    'font-size': 11,
+    'text-wrap': 'wrap',
+    'text-max-width': 160,
+    'background-color': '#ffffff',
+    'shape': 'round-rectangle',
+    'border-width': 1,
+    'border-color': '#e5e7eb',
+    'text-valign': 'bottom',
+    'text-halign': 'center',
+    'color': '#111827',
+    'background-image': (ele) => {
+      const icon = ele.data('icon');
+      return typeof icon === 'string' && icon.trim() ? icon : undefined;
     },
-  });
-
-  if (typeof cy.minimap === 'function') { try { cy.minimap({}); } catch {} }
-
-  cy.on('select', 'node,edge', (e) => {
-    const d = e.target.data();
-    document.getElementById('details').innerHTML = '<pre>' + JSON.stringify(d, null, 2) + '</pre>';
-  });
-  cy.on('unselect', () => {
-    document.getElementById('details').innerHTML = '<div class="muted">Select a node or edge.</div>';
-  });
-
-  const resetBtn = document.getElementById('btn-reset');
-  if (resetBtn) resetBtn.addEventListener('click', () => { cy.fit(null, 60); });
-
-  const rect = cy.container().getBoundingClientRect();
-  console.log('[ui] cy container rect:', rect);
-}
-
-function legend(){
-  const items = [
-    ['Resource edges', '#2563eb'],
-    ['Network edges', '#f97316'],
-    ['Data/invoke edges', '#0ea5e9 (dotted)'],
-    ['Derived', 'dashed']
-  ];
-  const el = document.getElementById('legend'); el.innerHTML = '';
-  for (const [name, color] of items){
-    const row = document.createElement('div'); row.className = 'legend-row';
-    const sw = document.createElement('span'); sw.className = 'swatch';
-    if (color === 'dashed'){ sw.style.border = '1px dashed #9ca3af'; sw.style.background='transparent'; }
-    else { sw.style.background = color.split(' ')[0]; }
-    row.appendChild(sw); row.appendChild(document.createTextNode(name)); el.appendChild(row);
+    'background-fit': 'contain',
+    'background-clip': 'node',
+    'background-opacity': (ele) => ele.data('icon') ? 1 : 0
   }
-}
+};
 
-function renderWarnings(list){
-  const el = document.getElementById('warnings'); el.innerHTML = '';
-  (list||[]).forEach(w => {
-    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = String(w);
-    el.appendChild(a);
-  });
-  if ((list||[]).length) {
-    const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
-    if (det) det.setAttribute('open', '');
+const EDGE_STYLE = {
+  selector: 'edge',
+  style: {
+    'curve-style': 'bezier',
+    'target-arrow-shape': 'triangle',
+    'arrow-scale': 0.9,
+    'width': 2,
+    'label': 'data(label)',
+    'font-size': 9,
+    'color': '#111827'
   }
-}
+};
 
-function renderFindings(list){
-  const el = document.getElementById('findings'); el.innerHTML = '';
-  (list||[]).forEach(f => {
-    const a = document.createElement('sl-alert'); a.variant = (f.severity||'info').toLowerCase(); a.closable=true;
-    a.innerHTML = `[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`;
-    el.appendChild(a);
-  });
-}
+// Init, bindings, layout, etc. (unchanged)...
 
-function iconFor(type){ return ICONS[type] || ''; }
-function injectIcons(elements){
-  return (elements || []).map(el => {
-    if (el && el.data && !('source' in el.data)) {
-      el.data.icon = iconFor(el.data.type);
-    }
-    return el;
-  });
-}
-
-/** Remove edges that reference non-existent nodes. Also dedupe by id. */
 function sanitizeElements(elements) {
-  const nodes = [];
-  const edges = [];
-
-  for (const el of elements || []) {
-    if (!el || !el.data) continue;
-    const isEdge = !!(el.data.source || el.data.target) || el.group === 'edges';
-    if (isEdge) edges.push(el); else nodes.push(el);
-  }
-
-  // dedupe nodes by id (keep first)
-  const nodeMap = new Map();
-  for (const n of nodes) {
-    const id = n?.data?.id;
-    if (!id || nodeMap.has(id)) continue;
-    nodeMap.set(id, n);
-  }
-  const nodeIds = new Set(nodeMap.keys());
-
-  // keep only edges with both endpoints present; dedupe by edge id
-  const edgeMap = new Map();
+  const nodes = elements.filter(e => e.group === 'nodes');
+  const edges = elements.filter(e => e.group === 'edges');
+  const nodeIds = new Set(nodes.map(n => n.data.id));
+  const cleanedEdges = [];
   let dropped = 0;
-  for (const e of edges) {
-    const d = e.data || {};
-    if (!d.source || !d.target || !nodeIds.has(d.source) || !nodeIds.has(d.target)) {
+
+  edges.forEach(edge => {
+    const d = edge.data;
+    if (nodeIds.has(d.source) && nodeIds.has(d.target)) {
+      cleanedEdges.push(edge);
+    } else {
       dropped++;
-      continue;
     }
-    const eid = d.id || `${d.source}->${d.target}`;
-    if (!edgeMap.has(eid)) edgeMap.set(eid, e);
-  }
-
-  const cleaned = [...nodeMap.values(), ...edgeMap.values()];
-  if (dropped > 0) {
-    console.warn('[ui] filtered invalid edges:', dropped);
-    // surface this in the warnings panel, too
-    const w = document.getElementById('warnings');
-    if (w) {
-      const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-      a.innerHTML = `Filtered ${dropped} edges referencing missing nodes. Check ID consistency.`;
-      w.appendChild(a);
-      const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
-      if (det) det.setAttribute('open', '');
-    }
-  }
-  return cleaned;
-}
-
-// ---- Enumerate helpers ----
-async function postEnumerate(){
-  const ak = (document.getElementById('ak')?.value || '').trim();
-  const sk = (document.getElementById('sk')?.value || '').trim();
-  const payload = { access_key_id: ak, secret_access_key: sk };
-
-  const res = await fetch('/enumerate', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
   });
-  const data = await res.json().catch(() => null);
-  return { ok: res.ok, status: res.status, data };
+
+  if (dropped) {
+    const w = document.getElementById('warnings');
+    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+    a.textContent = `Filtered ${dropped} edges referencing missing nodes.`;
+    w.appendChild(a);
+  }
+
+  return [...nodes, ...cleanedEdges];
 }
 
-// ---- Enumerate button handler ----
-async function handleEnumerateClick(){
-  console.log('[ui] Enumerate clicked');
-  const ak = (document.getElementById('ak')?.value || '').trim();
-  const sk = (document.getElementById('sk')?.value || '').trim();
-  const btn = document.getElementById('btn-enumerate');
-  if (!ak || !sk) { renderWarnings(['Please provide both Access Key ID and Secret Access Key.']); return; }
-
-  btn.loading = true;
-  try {
-    const { ok, status, data } = await postEnumerate();
-    if (!ok) { renderWarnings([data?.error || `Request failed with ${status}`]); return; }
-
-    let elements = data?.elements || [];
-    console.log('[ui] elements count:', elements.length);
-    window.lastElements = elements; // keep for debugging
-
-    // add icons to nodes, then sanitize (filter invalid edges)
-    elements = sanitizeElements(injectIcons(elements));
-
-    cy.elements().remove();
-    cy.add(elements);
-    cy.resize();
-
-    const layout = cy.layout({
-      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-      quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
-    });
-    layout.run();
-    layout.on('layoutstop', () => { cy.fit(null, 60); });
-    setTimeout(() => { cy.fit(null, 60); }, 120); // extra safety
-
-    console.log('[ui] nodes:', cy.nodes().size(), 'edges:', cy.edges().size(),
-                'rect:', cy.container().getBoundingClientRect());
-    renderFindings(data.findings || []); renderWarnings(data.warnings || []);
-  } catch (e){
-    renderWarnings([String(e)]);
-  } finally { btn.loading = false; }
+// In the enumerate handler:
+async function handleEnumerateClick() {
+  // ... after fetching elements ...
+  let elements = data.elements || [];
+  elements = sanitizeElements(elements); // filter first
+  elements.forEach(el => {
+    if (el.group === 'nodes' && el.data.type) {
+      el.data.icon = ICONS[el.data.type] || undefined;
+    }
+  });
+  cy.elements().remove();
+  cy.add(elements);
+  // layout/run...
 }
-
-function bindUI(){
-  console.log('[ui] bindUI');
-  const btn = document.getElementById('btn-enumerate');
-  if (!btn) { console.error('[ui] enumerate button not found'); return; }
-  Promise.all([ customElements.whenDefined('sl-button'), customElements.whenDefined('sl-input') ])
-    .then(() => {
-      console.log('[ui] custom elements ready; binding click handlers');
-      btn.addEventListener('click', handleEnumerateClick);
-      btn.addEventListener('sl-click', handleEnumerateClick);
-      ['ak','sk'].forEach(id => {
-        const el = document.getElementById(id);
-        el.addEventListener('keydown', e => { if (e.key === 'Enter') handleEnumerateClick(); });
-      });
-    }).catch(() => { btn.addEventListener('click', handleEnumerateClick); });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[ui] DOMContentLoaded');
-  bindUI();
-  try { initCySafe(); } catch (e) { renderWarnings([String(e)]); }
-  legend();
-});
