@@ -1,6 +1,6 @@
 from __future__ import annotations
 import os
-from typing import Any, List
+from typing import Any, List, Tuple, Dict
 import boto3
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -31,30 +31,16 @@ def build_session(ak: str|None, sk: str|None, st: str|None, region: str) -> boto
         return boto3.Session(aws_access_key_id=ak, aws_secret_access_key=sk, aws_session_token=st, region_name=region)
     return boto3.Session(region_name=region)
 
-@app.post('/enumerate')
-async def enumerate_api(req: Request):
-    payload = await req.json()
-    ak = (payload.get('access_key_id') or '').strip() or None
-    sk = (payload.get('secret_access_key') or '').strip() or None
-    st = (payload.get('session_token') or '').strip() or None
-    region = (payload.get('region') or DEFAULT_REGION).strip()
-    sess = build_session(ak, sk, st, region)
-
+def _enumerate_one_region(sess: boto3.Session, account_id: str, region: str) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
+    """Run all enumerators for a single region and return (elements, warnings, findings)."""
     warnings: List[str] = []
-    try:
-        me = sess.client('sts').get_caller_identity()
-        account_id = me.get('Account') or 'self'
-    except Exception as e:
-        account_id = 'self'
-        warnings.append(f'sts get_caller_identity failed: {e}')
-
     g = Graph()
 
     services = [
         ('ec2', ec2.enumerate),
         ('elbv2', elbv2.enumerate),
 
-        # Ensure tables/buckets/queues/topics exist before IAM edges attempt to link
+        # Ensure downstream refs exist first
         ('dynamodb', dynamodb.enumerate),
         ('s3', s3.enumerate),
         ('sqs_sns', sqs_sns.enumerate),
@@ -69,19 +55,85 @@ async def enumerate_api(req: Request):
         ('ecs', ecs.enumerate),
     ]
 
+    service_counts: Dict[str, int] = {}
+
     for name, fn in services:
+        before = len(g.elements())
         try:
             fn(sess, account_id, region, g, warnings)
         except Exception as e:
             warnings.append(f'{name} failed: {e}')
+        after = len(g.elements())
+        service_counts[name] = after - before
 
-    for e in derive_reachability(g):
-        g.add_edge(**e)
+    # Derived reachability (optional edges)
+    try:
+        for e in derive_reachability(g):
+            g.add_edge(**e)
+    except Exception as e:
+        warnings.append(f'derive_reachability failed: {e}')
 
     elements = g.elements()
     findings = analyze_findings(elements)
-    return json_response({ 'elements': elements, 'warnings': warnings, 'findings': findings, 'region': region })
+    # Add a tiny banner node if literally nothing found, to make the UI say *something*
+    if not elements:
+        pass
 
-@app.get('/_health')
-async def health():
-    return { 'ok': True, 'region': DEFAULT_REGION }
+    # Attach counts as a synthetic warning for visibility
+    total_nodes = sum(1 for el in elements if 'source' not in el.get('data', {}))
+    total_edges = sum(1 for el in elements if 'source' in el.get('data', {}))
+    warnings.insert(0, f'Enumerated region {region}: nodes={total_nodes}, edges={total_edges}, per_service={service_counts}')
+
+    return elements, warnings, findings
+
+def _list_enabled_regions(sess: boto3.Session) -> List[str]:
+    # Try API; if blocked, return a sensible default list.
+    try:
+        ec2c = sess.client('ec2')
+        out = ec2c.describe_regions(AllRegions=False)
+        regs = [r['RegionName'] for r in out.get('Regions', [])]
+        return sorted(regs)
+    except Exception:
+        # Fallback: common commercial regions
+        return [
+            'us-east-1','us-east-2','us-west-1','us-west-2',
+            'eu-west-1','eu-west-2','eu-central-1',
+            'ap-south-1','ap-southeast-1','ap-southeast-2','ap-northeast-1'
+        ]
+
+@app.post('/enumerate')
+async def enumerate_api(req: Request):
+    payload = await req.json()
+    ak = (payload.get('access_key_id') or '').strip() or None
+    sk = (payload.get('secret_access_key') or '').strip() or None
+    st = (payload.get('session_token') or '').strip() or None
+    region = (payload.get('region') or DEFAULT_REGION).strip()
+    scan_all = bool(payload.get('scan_all'))
+
+    sess = build_session(ak, sk, st, region)
+
+    warnings: List[str] = []
+    account_id = 'self'
+    try:
+        me = sess.client('sts').get_caller_identity()
+        account_id = me.get('Account') or 'self'
+    except Exception as e:
+        warnings.append(f'sts get_caller_identity failed: {e}')
+
+    # Single region enumeration
+    elements, w_reg, findings = _enumerate_one_region(sess, account_id, region)
+    warnings.extend(w_reg)
+
+    # If empty and the client asked to scan all regions, do it now
+    scanned_regions = [region]
+    if scan_all and not elements:
+        regions = [r for r in _list_enabled_regions(sess) if r != region]
+        for r in regions:
+            rsess = build_session(ak, sk, st, r)
+            el2, w2, f2 = _enumerate_one_region(rsess, account_id, r)
+            elements.extend(el2)
+            warnings.extend(w2)
+            findings.extend(x for x in f2 if x not in findings)  # de-dupe-ish
+            scanned_regions.append(r)
+
+    return json_response({ 'elements': elements, 'warnings': warnings, 'findings': findings, 'region': region, 'scanned_regions': scanned_regions })
