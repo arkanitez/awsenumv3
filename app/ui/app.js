@@ -120,8 +120,10 @@ function initCySafe() {
       ...NODE_STYLES.map(s => ({ selector: s.sel, style: s.style })),
       ...EDGE_STYLES.map(s => ({ selector: s.sel, style: s.style })),
     ],
-    layout: { name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-      quality: 'default', animate: false, nodeRepulsion: 80000, idealEdgeLength: 220, gravity: 0.25, numIter: 1200, tile: true },
+    layout: {
+      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
+      quality: 'default', animate: false, nodeRepulsion: 80000, idealEdgeLength: 220, gravity: 0.25, numIter: 1200, tile: true
+    },
   });
 
   if (typeof cy.minimap === 'function') { try { cy.minimap({}); } catch {} }
@@ -134,11 +136,9 @@ function initCySafe() {
     document.getElementById('details').innerHTML = '<div class="muted">Select a node or edge.</div>';
   });
 
-  // Reset view button
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) resetBtn.addEventListener('click', () => { cy.fit(null, 60); });
 
-  // Log container rect to confirm sizing
   const rect = cy.container().getBoundingClientRect();
   console.log('[ui] cy container rect:', rect);
 }
@@ -185,83 +185,47 @@ function renderFindings(list){
 function iconFor(type){ return ICONS[type] || ''; }
 function injectIcons(elements){
   return (elements || []).map(el => {
-    if (el.data && !('source' in el.data)) {
+    if (el && el.data && !('source' in el.data)) {
       el.data.icon = iconFor(el.data.type);
     }
     return el;
   });
 }
 
-// ---- Enumerate helpers ----
-async function postEnumerate(){
-  const ak = (document.getElementById('ak')?.value || '').trim();
-  const sk = (document.getElementById('sk')?.value || '').trim();
-  const payload = { access_key_id: ak, secret_access_key: sk };
+/** Remove edges that reference non-existent nodes. Also dedupe by id. */
+function sanitizeElements(elements) {
+  const nodes = [];
+  const edges = [];
 
-  const res = await fetch('/enumerate', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json().catch(() => null);
-  return { ok: res.ok, status: res.status, data };
-}
+  for (const el of elements || []) {
+    if (!el || !el.data) continue;
+    const isEdge = !!(el.data.source || el.data.target) || el.group === 'edges';
+    if (isEdge) edges.push(el); else nodes.push(el);
+  }
 
-// ---- Enumerate button handler ----
-async function handleEnumerateClick(){
-  console.log('[ui] Enumerate clicked');
-  const ak = (document.getElementById('ak')?.value || '').trim();
-  const sk = (document.getElementById('sk')?.value || '').trim();
-  const btn = document.getElementById('btn-enumerate');
-  if (!ak || !sk) { renderWarnings(['Please provide both Access Key ID and Secret Access Key.']); return; }
+  // dedupe nodes by id (keep first)
+  const nodeMap = new Map();
+  for (const n of nodes) {
+    const id = n?.data?.id;
+    if (!id || nodeMap.has(id)) continue;
+    nodeMap.set(id, n);
+  }
+  const nodeIds = new Set(nodeMap.keys());
 
-  btn.loading = true;
-  try {
-    const { ok, status, data } = await postEnumerate();
-    if (!ok) { renderWarnings([data?.error || `Request failed with ${status}`]); return; }
+  // keep only edges with both endpoints present; dedupe by edge id
+  const edgeMap = new Map();
+  let dropped = 0;
+  for (const e of edges) {
+    const d = e.data || {};
+    if (!d.source || !d.target || !nodeIds.has(d.source) || !nodeIds.has(d.target)) {
+      dropped++;
+      continue;
+    }
+    const eid = d.id || `${d.source}->${d.target}`;
+    if (!edgeMap.has(eid)) edgeMap.set(eid, e);
+  }
 
-    const elements = data?.elements || [];
-    console.log('[ui] elements count:', elements.length);
-    window.lastElements = elements;
-
-    cy.elements().remove();
-    cy.add(injectIcons(elements));
-    cy.resize();
-    const layout = cy.layout({
-      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-      quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
-    });
-    layout.run();
-    layout.on('layoutstop', () => { cy.fit(null, 60); });
-    setTimeout(() => { cy.fit(null, 60); }, 100);
-
-    // Log stats after render
-    console.log('[ui] nodes:', cy.nodes().size(), 'edges:', cy.edges().size(),
-                'rect:', cy.container().getBoundingClientRect());
-    renderFindings(data.findings || []); renderWarnings(data.warnings || []);
-  } catch (e){
-    renderWarnings([String(e)]);
-  } finally { btn.loading = false; }
-}
-
-function bindUI(){
-  console.log('[ui] bindUI');
-  const btn = document.getElementById('btn-enumerate');
-  if (!btn) { console.error('[ui] enumerate button not found'); return; }
-  Promise.all([ customElements.whenDefined('sl-button'), customElements.whenDefined('sl-input') ])
-    .then(() => {
-      console.log('[ui] custom elements ready; binding click handlers');
-      btn.addEventListener('click', handleEnumerateClick);
-      btn.addEventListener('sl-click', handleEnumerateClick);
-      ['ak','sk'].forEach(id => {
-        const el = document.getElementById(id);
-        el.addEventListener('keydown', e => { if (e.key === 'Enter') handleEnumerateClick(); });
-      });
-    }).catch(() => { btn.addEventListener('click', handleEnumerateClick); });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[ui] DOMContentLoaded');
-  bindUI();
-  try { initCySafe(); } catch (e) { renderWarnings([String(e)]); }
-  legend();
-});
+  const cleaned = [...nodeMap.values(), ...edgeMap.values()];
+  if (dropped > 0) {
+    console.warn('[ui] filtered invalid edges:', dropped);
+    // surf
