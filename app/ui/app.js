@@ -228,4 +228,92 @@ function sanitizeElements(elements) {
   const cleaned = [...nodeMap.values(), ...edgeMap.values()];
   if (dropped > 0) {
     console.warn('[ui] filtered invalid edges:', dropped);
-    // surf
+    // surface this in the warnings panel, too
+    const w = document.getElementById('warnings');
+    if (w) {
+      const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+      a.innerHTML = `Filtered ${dropped} edges referencing missing nodes. Check ID consistency.`;
+      w.appendChild(a);
+      const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
+      if (det) det.setAttribute('open', '');
+    }
+  }
+  return cleaned;
+}
+
+// ---- Enumerate helpers ----
+async function postEnumerate(){
+  const ak = (document.getElementById('ak')?.value || '').trim();
+  const sk = (document.getElementById('sk')?.value || '').trim();
+  const payload = { access_key_id: ak, secret_access_key: sk };
+
+  const res = await fetch('/enumerate', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, data };
+}
+
+// ---- Enumerate button handler ----
+async function handleEnumerateClick(){
+  console.log('[ui] Enumerate clicked');
+  const ak = (document.getElementById('ak')?.value || '').trim();
+  const sk = (document.getElementById('sk')?.value || '').trim();
+  const btn = document.getElementById('btn-enumerate');
+  if (!ak || !sk) { renderWarnings(['Please provide both Access Key ID and Secret Access Key.']); return; }
+
+  btn.loading = true;
+  try {
+    const { ok, status, data } = await postEnumerate();
+    if (!ok) { renderWarnings([data?.error || `Request failed with ${status}`]); return; }
+
+    let elements = data?.elements || [];
+    console.log('[ui] elements count:', elements.length);
+    window.lastElements = elements; // keep for debugging
+
+    // add icons to nodes, then sanitize (filter invalid edges)
+    elements = sanitizeElements(injectIcons(elements));
+
+    cy.elements().remove();
+    cy.add(elements);
+    cy.resize();
+
+    const layout = cy.layout({
+      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
+      quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
+    });
+    layout.run();
+    layout.on('layoutstop', () => { cy.fit(null, 60); });
+    setTimeout(() => { cy.fit(null, 60); }, 120); // extra safety
+
+    console.log('[ui] nodes:', cy.nodes().size(), 'edges:', cy.edges().size(),
+                'rect:', cy.container().getBoundingClientRect());
+    renderFindings(data.findings || []); renderWarnings(data.warnings || []);
+  } catch (e){
+    renderWarnings([String(e)]);
+  } finally { btn.loading = false; }
+}
+
+function bindUI(){
+  console.log('[ui] bindUI');
+  const btn = document.getElementById('btn-enumerate');
+  if (!btn) { console.error('[ui] enumerate button not found'); return; }
+  Promise.all([ customElements.whenDefined('sl-button'), customElements.whenDefined('sl-input') ])
+    .then(() => {
+      console.log('[ui] custom elements ready; binding click handlers');
+      btn.addEventListener('click', handleEnumerateClick);
+      btn.addEventListener('sl-click', handleEnumerateClick);
+      ['ak','sk'].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') handleEnumerateClick(); });
+      });
+    }).catch(() => { btn.addEventListener('click', handleEnumerateClick); });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[ui] DOMContentLoaded');
+  bindUI();
+  try { initCySafe(); } catch (e) { renderWarnings([String(e)]); }
+  legend();
+});
