@@ -6,14 +6,14 @@
   <title>AWS Enum — Modern</title>
   <link rel="stylesheet" href="/ui/style.css" />
   <!-- Shoelace (modern web components) -->
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
-  <!-- Cytoscape + plugins -->
-  <script src="https://unpkg.com/cytoscape@3.27.0/dist/cytoscape.min.js"></script>
-  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
-  <script src="https://unpkg.com/cytoscape-minimap@3.1.2/cytoscape-minimap.js"></script>
-  <script src="https://unpkg.com/cytoscape-svg@2.1.3/cytoscape-svg.js"></script>
-  <!-- IMPORTANT: load our app as a module to avoid global name collisions -->
+  <!-- Cytoscape + plugins (with crossorigin so errors aren't masked as "Script error") -->
+  <script src="https://unpkg.com/cytoscape@3.27.0/dist/cytoscape.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/cytoscape-minimap@3.1.2/cytoscape-minimap.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/cytoscape-svg@2.1.3/cytoscape-svg.js" crossorigin="anonymous"></script>
+  <!-- Load our app as a module -->
   <script type="module" src="/ui/app.js"></script>
 </head>
 <body>
@@ -35,7 +35,6 @@
           <sl-input id="ak" label="Access Key ID" placeholder="AKIA..." clearable></sl-input>
           <sl-input id="sk" label="Secret Access Key" type="password" placeholder="••••••••••" toggle-password clearable></sl-input>
         </div>
-        <!-- NOTE: renamed id to avoid any chance of clobbering function names -->
         <sl-button id="btn-enumerate" variant="primary" size="large">Enumerate</sl-button>
         <div class="hint">Defaults: <code>region=ap-southeast-1</code></div>
       </sl-card>
@@ -50,7 +49,6 @@
         <sl-details summary="Findings">
           <div id="findings"></div>
         </sl-details>
-        <!-- Open warnings by default so you see errors immediately -->
         <sl-details summary="Warnings" open>
           <div id="warnings"></div>
         </sl-details>
