@@ -118,4 +118,98 @@ function legend(){
   const el = document.getElementById('legend'); el.innerHTML = '';
   for (const [name, color] of items){
     const row = document.createElement('div'); row.className = 'legend-row';
-    const sw = document
+    const sw = document.createElement('span'); sw.className = 'swatch';
+    if (color === 'dashed'){ sw.style.border = '1px dashed var(--sl-color-neutral-600)'; sw.style.background='transparent'; }
+    else { sw.style.background = color.split(' ')[0]; }
+    row.appendChild(sw); row.appendChild(document.createTextNode(name)); el.appendChild(row);
+  }
+}
+
+function renderWarnings(list){
+  const el = document.getElementById('warnings'); el.innerHTML = '';
+  (list||[]).forEach(w => {
+    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${w}`;
+    el.appendChild(a);
+  });
+  if ((list||[]).length) {
+    const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
+    if (det) det.setAttribute('open', '');
+  }
+}
+
+function renderFindings(list){
+  const el = document.getElementById('findings'); el.innerHTML = '';
+  (list||[]).forEach(f => {
+    const a = document.createElement('sl-alert'); a.variant = (f.severity||'info').toLowerCase(); a.closable=true;
+    a.innerHTML = `<sl-icon name="info-circle" slot="icon"></sl-icon>[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`;
+    el.appendChild(a);
+  });
+}
+
+async function handleEnumerateClick(){
+  console.log('[ui] Enumerate clicked');
+  const ak = (document.getElementById('ak')?.value || '').trim();
+  const sk = (document.getElementById('sk')?.value || '').trim();
+  const btn = document.getElementById('btn-enumerate');
+  if (!ak || !sk) { renderWarnings(['Please provide both Access Key ID and Secret Access Key.']); return; }
+  btn.loading = true;
+  try {
+    const res = await fetch('/enumerate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ access_key_id: ak, secret_access_key: sk }) });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) { renderWarnings([data?.error || `Request failed with ${res.status}`]); return; }
+    cy?.elements().remove();
+    cy?.add(data.elements || []);
+    cy?.layout({ name:'cose-bilkent', quality:'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true }).run();
+    cy?.fit(null, 60);
+    renderFindings(data.findings || []); renderWarnings(data.warnings || []);
+  } catch (e) {
+    renderWarnings([String(e)]);
+  } finally {
+    btn.loading = false;
+  }
+}
+
+function bindUI(){
+  console.log('[ui] bindUI');
+  const btn = document.getElementById('btn-enumerate');
+  if (!btn) { console.error('[ui] enumerate button not found'); return; }
+  Promise.all([ customElements.whenDefined('sl-button'), customElements.whenDefined('sl-input') ])
+    .then(() => {
+      console.log('[ui] custom elements ready; binding click handlers');
+      btn.addEventListener('click', handleEnumerateClick);
+      btn.addEventListener('sl-click', handleEnumerateClick);
+      ['ak','sk'].forEach(id => document.getElementById(id).addEventListener('keydown', e => { if (e.key==='Enter') handleEnumerateClick(); }));
+      // Exports & fit
+      document.getElementById('fit').addEventListener('click', () => cy?.fit(null, 60));
+      document.getElementById('export-png').addEventListener('click', () => cy ? downloadDataURL(cy.png({full:true}), 'topology.png') : null);
+      document.getElementById('export-svg').addEventListener('click', () => {
+        try { cy && downloadText(cy.svg({full:true}), 'topology.svg'); }
+        catch (e) { renderWarnings(['SVG export unavailable (plugin not loaded).']); }
+      });
+      document.getElementById('export-json').addEventListener('click', () => downloadText(JSON.stringify({elements: cy?.json().elements || []}, null, 2), 'topology.json'));
+    })
+    .catch(err => {
+      console.error('[ui] custom element upgrade failed', err);
+      btn.addEventListener('click', handleEnumerateClick);
+    });
+}
+
+function downloadDataURL(dataUrl, filename){
+  const a = document.createElement('a'); a.href = dataUrl; a.download = filename; a.click();
+}
+function downloadText(text, filename){
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[ui] DOMContentLoaded');
+  // IMPORTANT: bind UI first so clicks always work even if graph init fails
+  bindUI();
+  // Then init the graph (safe)
+  try { initCySafe(); } catch (e) { console.error('[ui] initCy failed', e); renderWarnings([String(e)]); }
+  legend();
+});
