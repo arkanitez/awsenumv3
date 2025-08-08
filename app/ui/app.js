@@ -83,47 +83,114 @@ function legend(){
   }
 }
 
-async function enumerateResources(){
-  const ak = document.getElementById('ak').value.trim();
-  const sk = document.getElementById('sk').value.trim();
-  const btn = document.getElementById('enumerate');
-  btn.loading = true;
-  try {
-    const res = await fetch('/enumerate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ access_key_id: ak, secret_access_key: sk }) });
-    const data = await res.json();
-    if (!res.ok){ throw new Error(data?.error || 'Request failed'); }
-    cy.elements().remove();
-    cy.add(data.elements || []);
-    cy.layout({ name: 'cose-bilkent', quality: 'default', animate: false, nodeRepulsion: 80000, idealEdgeLength: 220, gravity: 0.25, numIter: 1200, tile: true }).run();
-    cy.fit(null, 60);
-    renderFindings(data.findings || []);
-    renderWarnings(data.warnings || []);
-  } catch (e){
-    renderWarnings([String(e)]);
-  } finally {
-    btn.loading = false;
-  }
+function openWarnings() {
+  // auto-open the warnings details so errors are visible
+  const details = document.querySelector('sl-details[summary="Warnings"]') || document.querySelector('#panel sl-details:nth-of-type(3)');
+  if (details) details.setAttribute('open', '');
 }
 
 function renderWarnings(list){
   const el = document.getElementById('warnings'); el.innerHTML = '';
   (list||[]).forEach(w => {
-    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true; a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${w}`; el.appendChild(a);
+    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${w}`;
+    el.appendChild(a);
   });
+  if ((list||[]).length) openWarnings();
 }
+
 function renderFindings(list){
   const el = document.getElementById('findings'); el.innerHTML = '';
   (list||[]).forEach(f => {
-    const a = document.createElement('sl-alert'); a.variant = (f.severity||'info').toLowerCase(); a.closable=true; a.innerHTML = `<sl-icon name="info-circle" slot="icon"></sl-icon>[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`; el.appendChild(a);
+    const a = document.createElement('sl-alert'); a.variant = (f.severity||'info').toLowerCase(); a.closable=true;
+    a.innerHTML = `<sl-icon name="info-circle" slot="icon"></sl-icon>[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`;
+    el.appendChild(a);
   });
 }
 
+async function enumerate(){
+  console.log('[ui] Enumerate clicked');
+  const akEl = document.getElementById('ak');
+  const skEl = document.getElementById('sk');
+  const btn = document.getElementById('enumerate');
+
+  const ak = (akEl?.value || '').trim();
+  const sk = (skEl?.value || '').trim();
+
+  if (!ak || !sk) {
+    renderWarnings(['Please provide both Access Key ID and Secret Access Key.']);
+    return;
+  }
+
+  // Turn on loading safely regardless of upgrade timing
+  try { btn.setAttribute('loading', ''); } catch {}
+
+  try {
+    const res = await fetch('/enumerate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ access_key_id: ak, secret_access_key: sk })
+    });
+
+    let data;
+    try { data = await res.json(); } catch { data = null; }
+
+    if (!res.ok) {
+      const msg = data?.error || `Request failed with ${res.status}`;
+      console.error('[ui] enumerate error:', msg, data);
+      renderWarnings([msg]);
+      return;
+    }
+
+    console.log('[ui] enumerate ok. elements:', data?.elements?.length || 0);
+    cy.elements().remove();
+    cy.add(data.elements || []);
+    cy.layout({
+      name: 'cose-bilkent',
+      quality: 'default',
+      animate: false,
+      nodeRepulsion: 80000,
+      idealEdgeLength: 220,
+      gravity: 0.25,
+      numIter: 1200,
+      tile: true
+    }).run();
+    cy.fit(null, 60);
+    renderFindings(data.findings || []);
+    renderWarnings(data.warnings || []);
+  } catch (e){
+    console.error('[ui] enumerate exception:', e);
+    renderWarnings([String(e)]);
+  } finally {
+    try { btn.removeAttribute('loading'); } catch {}
+  }
+}
+
 function bindUI(){
-  document.getElementById('enumerate').addEventListener('click', enumerateResources);
+  const btn = document.getElementById('enumerate');
+  // Make sure custom elements are defined before attaching listeners (defensive)
+  Promise.all([
+    customElements.whenDefined('sl-button'),
+    customElements.whenDefined('sl-input')
+  ]).then(() => {
+    btn.addEventListener('click', enumerate);
+  }).catch(() => {
+    // Fall back anyway
+    btn.addEventListener('click', enumerate);
+  });
+
   document.getElementById('fit').addEventListener('click', () => cy.fit(null, 60));
   document.getElementById('export-png').addEventListener('click', () => downloadDataURL(cy.png({full:true}), 'topology.png'));
   document.getElementById('export-svg').addEventListener('click', () => downloadText(cy.svg({full:true}), 'topology.svg'));
   document.getElementById('export-json').addEventListener('click', () => downloadText(JSON.stringify({elements: cy.json().elements}, null, 2), 'topology.json'));
+
+  // Enter key submits (AK/SK)
+  ['ak','sk'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') enumerate();
+    });
+  });
 }
 
 function downloadDataURL(dataUrl, filename){
