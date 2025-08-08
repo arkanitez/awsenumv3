@@ -133,6 +133,10 @@ function initCySafe() {
   cy.on('unselect', () => {
     document.getElementById('details').innerHTML = '<div class="muted">Select a node or edge.</div>';
   });
+
+  // Reset view button
+  const resetBtn = document.getElementById('btn-reset');
+  if (resetBtn) resetBtn.addEventListener('click', () => { cy.fit(null, 60); });
 }
 
 function legend(){
@@ -185,11 +189,10 @@ function injectIcons(elements){
 }
 
 // ---- Enumerate helpers ----
-async function postEnumerate({ scanAll = false } = {}){
+async function postEnumerate(){
   const ak = (document.getElementById('ak')?.value || '').trim();
   const sk = (document.getElementById('sk')?.value || '').trim();
   const payload = { access_key_id: ak, secret_access_key: sk };
-  if (scanAll) payload.scan_all = true;
 
   const res = await fetch('/enumerate', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -199,49 +202,12 @@ async function postEnumerate({ scanAll = false } = {}){
   return { ok: res.ok, status: res.status, data };
 }
 
-function showScanAllCta(region){
-  const el = document.getElementById('warnings');
-  const card = document.createElement('sl-alert');
-  card.variant = 'primary';
-  card.closable = false;
-  card.innerHTML = `
-    <sl-icon name="info-circle" slot="icon"></sl-icon>
-    No resources found in <code>${region}</code>. Would you like to scan all enabled regions?
-    <div style="margin-top:8px">
-      <sl-button id="scan-all" variant="primary" size="small">Scan all regions</sl-button>
-    </div>`;
-  el.appendChild(card);
-
-  const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
-  if (det) det.setAttribute('open', '');
-
-  const btn = card.querySelector('#scan-all');
-  btn.addEventListener('click', async () => {
-    btn.loading = true;
-    try {
-      const { ok, status, data } = await postEnumerate({ scanAll: true });
-      if (!ok) { renderWarnings([data?.error || `Scan failed with ${status}`]); return; }
-      cy.elements().remove();
-      cy.add(injectIcons(data.elements || []));
-      cy.layout({
-        name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-        quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
-      }).run();
-      cy.fit(null, 60);
-      renderFindings(data.findings || []); renderWarnings(data.warnings || []);
-    } finally {
-      btn.loading = false;
-    }
-  });
-}
-
 // ---- Enumerate button handler ----
 async function handleEnumerateClick(){
   console.log('[ui] Enumerate clicked');
   const ak = (document.getElementById('ak')?.value || '').trim();
   const sk = (document.getElementById('sk')?.value || '').trim();
   const btn = document.getElementById('btn-enumerate');
-
   if (!ak || !sk) { renderWarnings(['Please provide both Access Key ID and Secret Access Key.']); return; }
 
   btn.loading = true;
@@ -250,21 +216,19 @@ async function handleEnumerateClick(){
     if (!ok) { renderWarnings([data?.error || `Request failed with ${status}`]); return; }
 
     const elements = data?.elements || [];
-    const region = data?.region || '(unknown)';
-    console.log('[ui] elements:', elements.length, 'region:', region, 'scanned_regions:', data?.scanned_regions);
+    console.log('[ui] elements count:', elements.length);
 
-    cy?.elements().remove();
-    cy?.add(injectIcons(elements));
-    if (elements.length > 0) {
-      cy?.layout({
-        name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-        quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
-      }).run();
-      cy?.fit(null, 60);
-    } else {
-      // Helpful CTA if nothing found in the default region
-      showScanAllCta(region);
-    }
+    cy.elements().remove();
+    cy.add(injectIcons(elements));
+    cy.resize(); // <-- important if CSS just applied
+    const layout = cy.layout({
+      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
+      quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
+    });
+    layout.run();
+    layout.on('layoutstop', () => { cy.fit(null, 60); });
+    // Fallback fit in case layout doesn't emit event
+    setTimeout(() => { cy.fit(null, 60); }, 100);
 
     renderFindings(data.findings || []); renderWarnings(data.warnings || []);
   } catch (e){
