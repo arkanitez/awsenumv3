@@ -1,34 +1,61 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AWS Topology Visualizer</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AWS Enum — Modern</title>
   <link rel="icon" href="data:,">
+
+  <!-- Cytoscape core + plugins (working CDN links, CORS-safe) -->
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.27.0/dist/cytoscape.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape-minimap@3.1.0/cytoscape-minimap.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@1.0.1/cytoscape-svg.min.js" crossorigin="anonymous"></script>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.14.0/dist/shoelace.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.14.0/dist/themes/light.css" />
-  <link rel="stylesheet" href="style.css">
+
+  <!-- Shoelace (modern web components) -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/shoelace.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.1/cdn/themes/light.css" />
+
+  <link rel="stylesheet" href="/ui/style.css" />
+  <!-- Load our app as a module (isolates globals) -->
+  <script type="module" src="/ui/app.js"></script>
 </head>
 <body>
-  <div id="panel">
-    <sl-input id="ak" label="Access Key ID" pill></sl-input>
-    <sl-input id="sk" label="Secret Access Key" type="password" pill></sl-input>
-    <sl-button id="enumerate" variant="primary">Enumerate</sl-button>
-    <sl-button id="fit">Fit Graph</sl-button>
-    <sl-button id="export-png">Export PNG</sl-button>
-    <sl-button id="export-svg">Export SVG</sl-button>
-    <sl-button id="export-json">Export JSON</sl-button>
-    <sl-details summary="Legend"><div id="legend"></div></sl-details>
-    <sl-details summary="Findings"><div id="findings"></div></sl-details>
-    <sl-details summary="Warnings" open><div id="warnings"></div></sl-details>
+  <div class="shell">
+    <header>
+      <div class="brand">AWS Enum <span class="badge">Modern</span></div>
+    </header>
+
+    <div class="controls">
+      <sl-card class="auth-card">
+        <div slot="header">Connect to AWS</div>
+        <div class="row">
+          <sl-input id="ak" label="Access Key ID" placeholder="AKIA..." clearable></sl-input>
+          <sl-input id="sk" label="Secret Access Key" type="password" placeholder="••••••••••" toggle-password clearable></sl-input>
+        </div>
+        <sl-button id="btn-enumerate" variant="primary" size="large">Enumerate</sl-button>
+        <div class="hint">Region defaults to <code>ap-southeast-1</code> (server-side)</div>
+      </sl-card>
+    </div>
+
+    <div class="main">
+      <div id="cy"></div>
+      <aside id="panel">
+        <sl-details summary="Details" open>
+          <div id="details"><div class="muted">Select a node or edge.</div></div>
+        </sl-details>
+        <sl-details summary="Findings">
+          <div id="findings"></div>
+        </sl-details>
+        <!-- Open warnings by default so you see errors immediately -->
+        <sl-details summary="Warnings" open>
+          <div id="warnings"></div>
+        </sl-details>
+        <sl-details summary="Legend" open>
+          <div id="legend"></div>
+        </sl-details>
+      </aside>
+    </div>
   </div>
-  <div id="cy"></div>
-  <div id="details"><div class="muted">Select a node or edge.</div></div>
-  <script src="app.js"></script>
 </body>
 </html>
