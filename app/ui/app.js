@@ -5,7 +5,7 @@ window.addEventListener('error', e => {
   const w = document.getElementById('warnings');
   if (w) {
     const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.error || e.message || e)}`;
+    a.innerHTML = String(e.error || e.message || e);
     w.appendChild(a);
     const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
     if (det) det.setAttribute('open', '');
@@ -16,7 +16,7 @@ window.addEventListener('unhandledrejection', e => {
   const w = document.getElementById('warnings');
   if (w) {
     const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.reason)}`;
+    a.innerHTML = String(e.reason);
     w.appendChild(a);
     const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
     if (det) det.setAttribute('open', '');
@@ -137,6 +137,10 @@ function initCySafe() {
   // Reset view button
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) resetBtn.addEventListener('click', () => { cy.fit(null, 60); });
+
+  // Log container rect to confirm sizing
+  const rect = cy.container().getBoundingClientRect();
+  console.log('[ui] cy container rect:', rect);
 }
 
 function legend(){
@@ -160,7 +164,7 @@ function renderWarnings(list){
   const el = document.getElementById('warnings'); el.innerHTML = '';
   (list||[]).forEach(w => {
     const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${w}`;
+    a.innerHTML = String(w);
     el.appendChild(a);
   });
   if ((list||[]).length) {
@@ -173,7 +177,7 @@ function renderFindings(list){
   const el = document.getElementById('findings'); el.innerHTML = '';
   (list||[]).forEach(f => {
     const a = document.createElement('sl-alert'); a.variant = (f.severity||'info').toLowerCase(); a.closable=true;
-    a.innerHTML = `<sl-icon name="info-circle" slot="icon"></sl-icon>[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`;
+    a.innerHTML = `[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`;
     el.appendChild(a);
   });
 }
@@ -220,16 +224,18 @@ async function handleEnumerateClick(){
 
     cy.elements().remove();
     cy.add(injectIcons(elements));
-    cy.resize(); // <-- important if CSS just applied
+    cy.resize();
     const layout = cy.layout({
       name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
       quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
     });
     layout.run();
     layout.on('layoutstop', () => { cy.fit(null, 60); });
-    // Fallback fit in case layout doesn't emit event
     setTimeout(() => { cy.fit(null, 60); }, 100);
 
+    // Log stats after render
+    console.log('[ui] nodes:', cy.nodes().size(), 'edges:', cy.edges().size(),
+                'rect:', cy.container().getBoundingClientRect());
     renderFindings(data.findings || []); renderWarnings(data.warnings || []);
   } catch (e){
     renderWarnings([String(e)]);
