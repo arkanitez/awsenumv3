@@ -174,21 +174,68 @@ function renderFindings(list){
   });
 }
 
-function iconFor(type){
-  return ICONS[type] || '';
-}
-
+function iconFor(type){ return ICONS[type] || ''; }
 function injectIcons(elements){
   return (elements || []).map(el => {
     if (el.data && !('source' in el.data)) {
-      const t = el.data.type;
-      el.data.icon = iconFor(t);
+      el.data.icon = iconFor(el.data.type);
     }
     return el;
   });
 }
 
-// ---- Enumerate handler ----
+// ---- Enumerate helpers ----
+async function postEnumerate({ scanAll = false } = {}){
+  const ak = (document.getElementById('ak')?.value || '').trim();
+  const sk = (document.getElementById('sk')?.value || '').trim();
+  const payload = { access_key_id: ak, secret_access_key: sk };
+  if (scanAll) payload.scan_all = true;
+
+  const res = await fetch('/enumerate', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, data };
+}
+
+function showScanAllCta(region){
+  const el = document.getElementById('warnings');
+  const card = document.createElement('sl-alert');
+  card.variant = 'primary';
+  card.closable = false;
+  card.innerHTML = `
+    <sl-icon name="info-circle" slot="icon"></sl-icon>
+    No resources found in <code>${region}</code>. Would you like to scan all enabled regions?
+    <div style="margin-top:8px">
+      <sl-button id="scan-all" variant="primary" size="small">Scan all regions</sl-button>
+    </div>`;
+  el.appendChild(card);
+
+  const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
+  if (det) det.setAttribute('open', '');
+
+  const btn = card.querySelector('#scan-all');
+  btn.addEventListener('click', async () => {
+    btn.loading = true;
+    try {
+      const { ok, status, data } = await postEnumerate({ scanAll: true });
+      if (!ok) { renderWarnings([data?.error || `Scan failed with ${status}`]); return; }
+      cy.elements().remove();
+      cy.add(injectIcons(data.elements || []));
+      cy.layout({
+        name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
+        quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
+      }).run();
+      cy.fit(null, 60);
+      renderFindings(data.findings || []); renderWarnings(data.warnings || []);
+    } finally {
+      btn.loading = false;
+    }
+  });
+}
+
+// ---- Enumerate button handler ----
 async function handleEnumerateClick(){
   console.log('[ui] Enumerate clicked');
   const ak = (document.getElementById('ak')?.value || '').trim();
@@ -199,21 +246,26 @@ async function handleEnumerateClick(){
 
   btn.loading = true;
   try {
-    const res = await fetch('/enumerate', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ access_key_id: ak, secret_access_key: sk })
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) { renderWarnings([data?.error || `Request failed with ${res.status}`]); return; }
+    const { ok, status, data } = await postEnumerate();
+    if (!ok) { renderWarnings([data?.error || `Request failed with ${status}`]); return; }
+
+    const elements = data?.elements || [];
+    const region = data?.region || '(unknown)';
+    console.log('[ui] elements:', elements.length, 'region:', region, 'scanned_regions:', data?.scanned_regions);
 
     cy?.elements().remove();
-    const els = injectIcons(data.elements || []);
-    cy?.add(els);
-    cy?.layout({
-      name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
-      quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
-    }).run();
-    cy?.fit(null, 60);
+    cy?.add(injectIcons(elements));
+    if (elements.length > 0) {
+      cy?.layout({
+        name: (window.cytoscapeCoseBilkent ? 'cose-bilkent' : 'breadthfirst'),
+        quality: 'default', animate:false, nodeRepulsion:80000, idealEdgeLength:220, gravity:0.25, numIter:1200, tile:true
+      }).run();
+      cy?.fit(null, 60);
+    } else {
+      // Helpful CTA if nothing found in the default region
+      showScanAllCta(region);
+    }
+
     renderFindings(data.findings || []); renderWarnings(data.warnings || []);
   } catch (e){
     renderWarnings([String(e)]);
