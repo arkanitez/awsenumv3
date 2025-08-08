@@ -1,6 +1,34 @@
 // Module scope = no accidental window globals
 console.log('[ui] script loaded');
 
+// Surface any runtime errors (so we don't miss "minimap is not a function", etc.)
+window.addEventListener('error', e => {
+  console.error('[ui] window error:', e.error || e.message || e);
+  try {
+    const w = document.getElementById('warnings');
+    if (w) {
+      const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+      a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.error || e.message || e)}`;
+      w.appendChild(a);
+      const details = Array.from(document.querySelectorAll('sl-details')).find(d => d.getAttribute('summary') === 'Warnings');
+      if (details) details.setAttribute('open', '');
+    }
+  } catch {}
+});
+window.addEventListener('unhandledrejection', e => {
+  console.error('[ui] unhandledrejection:', e.reason);
+  try {
+    const w = document.getElementById('warnings');
+    if (w) {
+      const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+      a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.reason)}`;
+      w.appendChild(a);
+      const details = Array.from(document.querySelectorAll('sl-details')).find(d => d.getAttribute('summary') === 'Warnings');
+      if (details) details.setAttribute('open', '');
+    }
+  } catch {}
+});
+
 let cy;
 
 const NODE_STYLES = [
@@ -54,7 +82,18 @@ function initCy() {
     ],
     layout: { name: 'cose-bilkent', quality: 'default', animate: false, nodeRepulsion: 80000, idealEdgeLength: 220, gravity: 0.25, numIter: 1200, tile: true },
   });
-  cy.minimap({});
+
+  // If the minimap plugin didn't load, this will throw—so wrap it
+  try {
+    if (typeof cy.minimap === 'function') {
+      cy.minimap({});
+    } else {
+      console.warn('[ui] minimap plugin missing (cy.minimap is not a function) — continuing without minimap');
+    }
+  } catch (e) {
+    console.warn('[ui] minimap init failed — continuing without minimap', e);
+  }
+
   cy.on('select', 'node,edge', (e) => {
     const d = e.target.data();
     document.getElementById('details').innerHTML = '<pre>' + JSON.stringify(d, null, 2) + '</pre>';
@@ -194,7 +233,10 @@ function bindUI(){
 
     fit.addEventListener('click', () => cy.fit(null, 60));
     png.addEventListener('click', () => downloadDataURL(cy.png({full:true}), 'topology.png'));
-    svg.addEventListener('click', () => downloadText(cy.svg({full:true}), 'topology.svg'));
+    svg.addEventListener('click', () => {
+      try { downloadText(cy.svg({full:true}), 'topology.svg'); }
+      catch (e) { renderWarnings(['SVG export unavailable (plugin not loaded).']); console.warn('[ui] svg export failed', e); }
+    });
     jsonBtn.addEventListener('click', () => downloadText(JSON.stringify({elements: cy.json().elements}, null, 2), 'topology.json'));
 
     // Enter key submits (AK/SK)
