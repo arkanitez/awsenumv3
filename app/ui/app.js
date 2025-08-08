@@ -83,7 +83,7 @@ function legend(){
   }
 }
 
-async function enumerate(){
+async function enumerateResources(){
   const ak = document.getElementById('ak').value.trim();
   const sk = document.getElementById('sk').value.trim();
   const btn = document.getElementById('enumerate');
@@ -119,7 +119,7 @@ function renderFindings(list){
 }
 
 function bindUI(){
-  document.getElementById('enumerate').addEventListener('click', enumerate);
+  document.getElementById('enumerate').addEventListener('click', enumerateResources);
   document.getElementById('fit').addEventListener('click', () => cy.fit(null, 60));
   document.getElementById('export-png').addEventListener('click', () => downloadDataURL(cy.png({full:true}), 'topology.png'));
   document.getElementById('export-svg').addEventListener('click', () => downloadText(cy.svg({full:true}), 'topology.svg'));
