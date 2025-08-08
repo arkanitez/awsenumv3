@@ -1,32 +1,28 @@
-// Module scope = no accidental window globals
+// Module scope
 console.log('[ui] script loaded');
 
-// Surface any runtime errors (so we don't miss "minimap is not a function", etc.)
+// Show any runtime errors (no more silent fails)
 window.addEventListener('error', e => {
   console.error('[ui] window error:', e.error || e.message || e);
-  try {
-    const w = document.getElementById('warnings');
-    if (w) {
-      const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-      a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.error || e.message || e)}`;
-      w.appendChild(a);
-      const details = Array.from(document.querySelectorAll('sl-details')).find(d => d.getAttribute('summary') === 'Warnings');
-      if (details) details.setAttribute('open', '');
-    }
-  } catch {}
+  const w = document.getElementById('warnings');
+  if (w) {
+    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.error || e.message || e)}`;
+    w.appendChild(a);
+    const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
+    if (det) det.setAttribute('open', '');
+  }
 });
 window.addEventListener('unhandledrejection', e => {
   console.error('[ui] unhandledrejection:', e.reason);
-  try {
-    const w = document.getElementById('warnings');
-    if (w) {
-      const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-      a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.reason)}`;
-      w.appendChild(a);
-      const details = Array.from(document.querySelectorAll('sl-details')).find(d => d.getAttribute('summary') === 'Warnings');
-      if (details) details.setAttribute('open', '');
-    }
-  } catch {}
+  const w = document.getElementById('warnings');
+  if (w) {
+    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
+    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${String(e.reason)}`;
+    w.appendChild(a);
+    const det = [...document.querySelectorAll('sl-details')].find(d => d.getAttribute('summary') === 'Warnings');
+    if (det) det.setAttribute('open', '');
+  }
 });
 
 let cy;
@@ -66,10 +62,16 @@ const EDGE_STYLES = [
   { sel: 'edge:selected', style: { 'width': 3 } },
 ];
 
-function initCy() {
+function initCySafe() {
   console.log('[ui] initCy');
+  if (!window.cytoscape) {
+    throw new Error('Cytoscape failed to load. Check network or CSP.');
+  }
+  const container = document.getElementById('cy');
+  if (!container) throw new Error('#cy container not found');
+
   cy = cytoscape({
-    container: document.getElementById('cy'),
+    container,
     elements: [],
     wheelSensitivity: 0.02,
     minZoom: 0.25,
@@ -83,15 +85,12 @@ function initCy() {
     layout: { name: 'cose-bilkent', quality: 'default', animate: false, nodeRepulsion: 80000, idealEdgeLength: 220, gravity: 0.25, numIter: 1200, tile: true },
   });
 
-  // If the minimap plugin didn't load, this will throw—so wrap it
+  // Minimap is optional — never let it crash the app
   try {
-    if (typeof cy.minimap === 'function') {
-      cy.minimap({});
-    } else {
-      console.warn('[ui] minimap plugin missing (cy.minimap is not a function) — continuing without minimap');
-    }
+    if (typeof cy.minimap === 'function') cy.minimap({});
+    else console.warn('[ui] minimap plugin missing — continuing');
   } catch (e) {
-    console.warn('[ui] minimap init failed — continuing without minimap', e);
+    console.warn('[ui] minimap init failed — continuing', e);
   }
 
   cy.on('select', 'node,edge', (e) => {
@@ -119,151 +118,4 @@ function legend(){
   const el = document.getElementById('legend'); el.innerHTML = '';
   for (const [name, color] of items){
     const row = document.createElement('div'); row.className = 'legend-row';
-    const sw = document.createElement('span'); sw.className = 'swatch';
-    if (color === 'dashed'){ sw.style.border = '1px dashed var(--sl-color-neutral-600)'; sw.style.background='transparent'; }
-    else { sw.style.background = color.split(' ')[0]; }
-    row.appendChild(sw); row.appendChild(document.createTextNode(name)); el.appendChild(row);
-  }
-}
-
-function openWarnings() {
-  const details = Array.from(document.querySelectorAll('sl-details')).find(d => d.getAttribute('summary') === 'Warnings');
-  if (details) details.setAttribute('open', '');
-}
-
-function renderWarnings(list){
-  const el = document.getElementById('warnings'); el.innerHTML = '';
-  (list||[]).forEach(w => {
-    const a = document.createElement('sl-alert'); a.variant='warning'; a.closable=true;
-    a.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${w}`;
-    el.appendChild(a);
-  });
-  if ((list||[]).length) openWarnings();
-}
-
-function renderFindings(list){
-  const el = document.getElementById('findings'); el.innerHTML = '';
-  (list||[]).forEach(f => {
-    const a = document.createElement('sl-alert'); a.variant = (f.severity||'info').toLowerCase(); a.closable=true;
-    a.innerHTML = `<sl-icon name="info-circle" slot="icon"></sl-icon>[${f.severity}] ${f.title}${f.detail?': '+f.detail:''}`;
-    el.appendChild(a);
-  });
-}
-
-async function handleEnumerateClick(){
-  console.log('[ui] Enumerate clicked');
-  const akEl = document.getElementById('ak');
-  const skEl = document.getElementById('sk');
-  const btn = document.getElementById('btn-enumerate');
-
-  const ak = (akEl?.value || '').trim();
-  const sk = (skEl?.value || '').trim();
-
-  if (!ak || !sk) {
-    renderWarnings(['Please provide both Access Key ID and Secret Access Key.']);
-    return;
-  }
-
-  btn.loading = true; // Shoelace boolean property
-
-  try {
-    const res = await fetch('/enumerate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ access_key_id: ak, secret_access_key: sk })
-    });
-
-    let data;
-    try { data = await res.json(); } catch { data = null; }
-
-    if (!res.ok) {
-      const msg = data?.error || `Request failed with ${res.status}`;
-      console.error('[ui] enumerate error:', msg, data);
-      renderWarnings([msg]);
-      return;
-    }
-
-    console.log('[ui] enumerate ok. elements:', data?.elements?.length || 0);
-    cy.elements().remove();
-    cy.add(data.elements || []);
-    cy.layout({
-      name: 'cose-bilkent',
-      quality: 'default',
-      animate: false,
-      nodeRepulsion: 80000,
-      idealEdgeLength: 220,
-      gravity: 0.25,
-      numIter: 1200,
-      tile: true
-    }).run();
-    cy.fit(null, 60);
-    renderFindings(data.findings || []);
-    renderWarnings(data.warnings || []);
-  } catch (e){
-    console.error('[ui] enumerate exception:', e);
-    renderWarnings([String(e)]);
-  } finally {
-    btn.loading = false;
-  }
-}
-
-function bindUI(){
-  console.log('[ui] bindUI');
-  const btn = document.getElementById('btn-enumerate');
-  const fit = document.getElementById('fit');
-  const png = document.getElementById('export-png');
-  const svg = document.getElementById('export-svg');
-  const jsonBtn = document.getElementById('export-json');
-
-  if (!btn) {
-    console.error('[ui] enumerate button not found in DOM');
-    renderWarnings(['Internal error: enumerate button not found.']);
-    return;
-  }
-
-  // Ensure Shoelace elements are upgraded before binding
-  Promise.all([
-    customElements.whenDefined('sl-button'),
-    customElements.whenDefined('sl-input')
-  ]).then(() => {
-    console.log('[ui] custom elements ready; binding click handlers');
-    btn.addEventListener('click', handleEnumerateClick);
-    // Extra safety: Shoelace also emits a custom event on activation in some contexts
-    btn.addEventListener('sl-click', handleEnumerateClick);
-
-    fit.addEventListener('click', () => cy.fit(null, 60));
-    png.addEventListener('click', () => downloadDataURL(cy.png({full:true}), 'topology.png'));
-    svg.addEventListener('click', () => {
-      try { downloadText(cy.svg({full:true}), 'topology.svg'); }
-      catch (e) { renderWarnings(['SVG export unavailable (plugin not loaded).']); console.warn('[ui] svg export failed', e); }
-    });
-    jsonBtn.addEventListener('click', () => downloadText(JSON.stringify({elements: cy.json().elements}, null, 2), 'topology.json'));
-
-    // Enter key submits (AK/SK)
-    ['ak','sk'].forEach(id => {
-      const el = document.getElementById(id);
-      el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') handleEnumerateClick(); });
-    });
-  }).catch(err => {
-    console.error('[ui] custom element upgrade failed', err);
-    // Fallback: bind anyway
-    btn.addEventListener('click', handleEnumerateClick);
-  });
-}
-
-function downloadDataURL(dataUrl, filename){
-  const a = document.createElement('a'); a.href = dataUrl; a.download = filename; a.click();
-}
-function downloadText(text, filename){
-  const blob = new Blob([text], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[ui] DOMContentLoaded');
-  initCy();
-  bindUI();
-  legend();
-});
+    const sw = document
