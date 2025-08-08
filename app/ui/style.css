@@ -27,22 +27,31 @@ header {
 .auth-card .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
 .hint { margin-top: 8px; font-size: 12px; color: #6b7280; }
 
+/* Main area: left sidebar (panel) + graph (cy) on the right */
 .main {
-  display: grid; grid-template-columns: 1fr var(--panel-w); gap: 0;
-  height: calc(100vh - 56px - 120px);
+  display: grid;
+  grid-template-columns: var(--panel-w) 1fr; /* sidebar on the LEFT */
+  gap: 0;
+  height: calc(100vh - 56px - 120px); /* header + controls */
 }
 
-/* Graph */
+/* Graph canvas on the right */
 #cy {
-  height: 100%; width: 100%;
-  background: #ffffff;        /* white canvas */
-  border-right: 1px solid #f3f4f6;
+  height: 100%;
+  width: 100%;
+  background: #ffffff;
+  border-left: 1px solid #f3f4f6;
+  overflow: hidden; /* prevent sideways scroll when panning */
 }
 
-/* Side panel */
+/* Left sidebar: fixed width, doesn't move sideways */
 #panel {
   height: 100%;
-  border-left: 1px solid #e5e7eb;
+  width: var(--panel-w);
+  position: sticky; /* stays put vertically within .main */
+  top: 0;
+  align-self: start;
+  border-right: 1px solid #e5e7eb;
   padding: 8px;
   overflow: auto;
   background: #fafafa;
