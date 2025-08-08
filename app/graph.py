@@ -43,9 +43,12 @@ class Graph:
                 if parent and not self._nodes[id_]["data"].get("parent"):
                     self._nodes[id_]["data"]["parent"] = parent
                 # Keep label/type/region fresh if callers pass updated values
-                self._nodes[id_]["data"]["label"] = label or self._nodes[id_]["data"].get("label", id_)
-                self._nodes[id_]["data"]["type"] = type_ or self._nodes[id_]["data"].get("type")
-                self._nodes[id_]["data"]["region"] = region or self._nodes[id_]["data"].get("region")
+                if label:
+                    self._nodes[id_]["data"]["label"] = label
+                if type_:
+                    self._nodes[id_]["data"]["type"] = type_
+                if region:
+                    self._nodes[id_]["data"]["region"] = region
                 return
 
             data = _clean_none(
@@ -55,7 +58,7 @@ class Graph:
                     "type": type_,
                     "region": region,
                     "details": details or {},
-                    "parent": parent,  # removed later if None by _clean_none
+                    "parent": parent,  # removed by _clean_none if None
                 }
             )
             self._nodes[id_] = {
@@ -86,6 +89,9 @@ class Graph:
 
         with self._lock:
             if id_ in self._edges:
+                # Merge details if re-added with extra info
+                if details:
+                    self._edges[id_]["data"].setdefault("details", {}).update(details)
                 return
 
             data = _clean_none(
@@ -116,7 +122,22 @@ class Graph:
             }
 
     def elements(self) -> List[Dict[str, Any]]:
-        """Return a stable list of nodes then edges (safe to iterate multiple times)."""
+        """Return a stable list of nodes then edges (safe to iterate multiple times).
+
+        Critically, this filters out edges whose source/target nodes do not exist.
+        Cytoscape will otherwise throw and refuse to load the entire batch.
+        """
         with self._lock:
-            # return nodes first so compounds/parents exist before children
-            return list(self._nodes.values()) + list(self._edges.values())
+            nodes_list = list(self._nodes.values())
+            node_ids = set(self._nodes.keys())
+
+            valid_edges: List[Dict[str, Any]] = []
+            for edge_id, edge in self._edges.items():
+                data = edge.get("data") or {}
+                src = data.get("source")
+                tgt = data.get("target")
+                if src in node_ids and tgt in node_ids:
+                    valid_edges.append(edge)
+                # else: drop silently; front-end will log dropped count, if any
+
+            return nodes_list + valid_edges
