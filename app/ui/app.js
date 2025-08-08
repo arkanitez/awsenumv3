@@ -221,6 +221,7 @@ async function handleEnumerateClick(){
 
     const elements = data?.elements || [];
     console.log('[ui] elements count:', elements.length);
+    window.lastElements = elements;
 
     cy.elements().remove();
     cy.add(injectIcons(elements));
