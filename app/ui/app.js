@@ -1,3 +1,6 @@
+// Module scope = no accidental window globals
+console.log('[ui] script loaded');
+
 let cy;
 
 const NODE_STYLES = [
@@ -36,6 +39,7 @@ const EDGE_STYLES = [
 ];
 
 function initCy() {
+  console.log('[ui] initCy');
   cy = cytoscape({
     container: document.getElementById('cy'),
     elements: [],
@@ -84,8 +88,7 @@ function legend(){
 }
 
 function openWarnings() {
-  // auto-open the warnings details so errors are visible
-  const details = document.querySelector('sl-details[summary="Warnings"]') || document.querySelector('#panel sl-details:nth-of-type(3)');
+  const details = Array.from(document.querySelectorAll('sl-details')).find(d => d.getAttribute('summary') === 'Warnings');
   if (details) details.setAttribute('open', '');
 }
 
@@ -108,11 +111,11 @@ function renderFindings(list){
   });
 }
 
-async function enumerate(){
+async function handleEnumerateClick(){
   console.log('[ui] Enumerate clicked');
   const akEl = document.getElementById('ak');
   const skEl = document.getElementById('sk');
-  const btn = document.getElementById('enumerate');
+  const btn = document.getElementById('btn-enumerate');
 
   const ak = (akEl?.value || '').trim();
   const sk = (skEl?.value || '').trim();
@@ -122,8 +125,7 @@ async function enumerate(){
     return;
   }
 
-  // Turn on loading safely regardless of upgrade timing
-  try { btn.setAttribute('loading', ''); } catch {}
+  btn.loading = true; // Shoelace boolean property
 
   try {
     const res = await fetch('/enumerate', {
@@ -162,34 +164,48 @@ async function enumerate(){
     console.error('[ui] enumerate exception:', e);
     renderWarnings([String(e)]);
   } finally {
-    try { btn.removeAttribute('loading'); } catch {}
+    btn.loading = false;
   }
 }
 
 function bindUI(){
-  const btn = document.getElementById('enumerate');
-  // Make sure custom elements are defined before attaching listeners (defensive)
+  console.log('[ui] bindUI');
+  const btn = document.getElementById('btn-enumerate');
+  const fit = document.getElementById('fit');
+  const png = document.getElementById('export-png');
+  const svg = document.getElementById('export-svg');
+  const jsonBtn = document.getElementById('export-json');
+
+  if (!btn) {
+    console.error('[ui] enumerate button not found in DOM');
+    renderWarnings(['Internal error: enumerate button not found.']);
+    return;
+  }
+
+  // Ensure Shoelace elements are upgraded before binding
   Promise.all([
     customElements.whenDefined('sl-button'),
     customElements.whenDefined('sl-input')
   ]).then(() => {
-    btn.addEventListener('click', enumerate);
-  }).catch(() => {
-    // Fall back anyway
-    btn.addEventListener('click', enumerate);
-  });
+    console.log('[ui] custom elements ready; binding click handlers');
+    btn.addEventListener('click', handleEnumerateClick);
+    // Extra safety: Shoelace also emits a custom event on activation in some contexts
+    btn.addEventListener('sl-click', handleEnumerateClick);
 
-  document.getElementById('fit').addEventListener('click', () => cy.fit(null, 60));
-  document.getElementById('export-png').addEventListener('click', () => downloadDataURL(cy.png({full:true}), 'topology.png'));
-  document.getElementById('export-svg').addEventListener('click', () => downloadText(cy.svg({full:true}), 'topology.svg'));
-  document.getElementById('export-json').addEventListener('click', () => downloadText(JSON.stringify({elements: cy.json().elements}, null, 2), 'topology.json'));
+    fit.addEventListener('click', () => cy.fit(null, 60));
+    png.addEventListener('click', () => downloadDataURL(cy.png({full:true}), 'topology.png'));
+    svg.addEventListener('click', () => downloadText(cy.svg({full:true}), 'topology.svg'));
+    jsonBtn.addEventListener('click', () => downloadText(JSON.stringify({elements: cy.json().elements}, null, 2), 'topology.json'));
 
-  // Enter key submits (AK/SK)
-  ['ak','sk'].forEach(id => {
-    const el = document.getElementById(id);
-    el.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') enumerate();
+    // Enter key submits (AK/SK)
+    ['ak','sk'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') handleEnumerateClick(); });
     });
+  }).catch(err => {
+    console.error('[ui] custom element upgrade failed', err);
+    // Fallback: bind anyway
+    btn.addEventListener('click', handleEnumerateClick);
   });
 }
 
@@ -203,4 +219,9 @@ function downloadText(text, filename){
   URL.revokeObjectURL(url);
 }
 
-document.addEventListener('DOMContentLoaded', () => { initCy(); bindUI(); legend(); });
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[ui] DOMContentLoaded');
+  initCy();
+  bindUI();
+  legend();
+});
