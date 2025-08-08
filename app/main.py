@@ -11,6 +11,7 @@ from .graph import Graph
 from .reachability import derive_reachability
 from .findings import analyze as analyze_findings
 from .enumerators import ec2, elbv2, lambda_, apigwv2, s3, sqs_sns, dynamodb, rds, eks, ecs
+from .enumerators import eventbridge, cloudfront
 
 DEFAULT_REGION = os.environ.get('DEFAULT_REGION', 'ap-southeast-1')
 
@@ -37,7 +38,6 @@ async def enumerate_api(req: Request):
     sk = (payload.get('secret_access_key') or '').strip() or None
     st = (payload.get('session_token') or '').strip() or None
     region = (payload.get('region') or DEFAULT_REGION).strip()
-
     sess = build_session(ak, sk, st, region)
 
     warnings: List[str] = []
@@ -53,11 +53,17 @@ async def enumerate_api(req: Request):
     services = [
         ('ec2', ec2.enumerate),
         ('elbv2', elbv2.enumerate),
-        ('lambda', lambda_.enumerate),
-        ('apigwv2', apigwv2.enumerate),
+
+        # Ensure tables/buckets/queues/topics exist before IAM edges attempt to link
+        ('dynamodb', dynamodb.enumerate),
         ('s3', s3.enumerate),
         ('sqs_sns', sqs_sns.enumerate),
-        ('dynamodb', dynamodb.enumerate),
+
+        ('lambda', lambda_.enumerate),
+        ('apigwv2', apigwv2.enumerate),
+        ('eventbridge', eventbridge.enumerate),
+        ('cloudfront', cloudfront.enumerate),
+
         ('rds', rds.enumerate),
         ('eks', eks.enumerate),
         ('ecs', ecs.enumerate),
